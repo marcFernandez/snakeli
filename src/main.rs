@@ -1,21 +1,22 @@
-use std::{
-    io::{stdout, Error, Result, Stdout, Write},
-    thread,
-    time::{Duration, Instant},
-};
-
 use crossterm::{
     cursor::MoveTo,
-    event::{poll, read, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
+    event::{poll, read, Event, KeyCode, KeyModifiers},
+    terminal::{enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
 };
 use rand::Rng;
+use std::{
+    env::args,
+    fmt::Display,
+    io::{stdout, Error, Result, Stdout, Write},
+    process::exit,
+    thread,
+    time::{Duration, Instant},
+};
 use term_color::BRIGHT_RED_BG;
 
-use crate::term_color::{RST, WHITE_BG};
-
 mod term_color;
+use crate::term_color::{RST, WHITE_BG};
 
 enum Direction {
     Up,
@@ -48,9 +49,9 @@ impl Cell<'_> {
         if x == 0 {
             x = 1
         }
-        let mut y: u16 = (rand::thread_rng().gen::<f32>() * (max_y - 1) as f32) as u16;
-        if y == 0 {
-            y = 1
+        let mut y: u16 = (rand::thread_rng().gen::<f32>() * (max_y) as f32) as u16;
+        if y < 2 {
+            y = 2
         }
         Cell {
             x,
@@ -76,20 +77,119 @@ struct Snake<'a> {
 }
 
 impl Snake<'_> {
-    pub fn new() -> Snake<'static> {
+    pub fn new(size: u16) -> Snake<'static> {
+        let mut body: Vec<Cell> = Vec::new();
+        for i in (0..size).rev() {
+            println!("{}", i);
+            body.push(Cell::snake(i, 2))
+        }
         Snake {
             direction: Direction::Right,
-            body: vec![Cell::snake(5, 5), Cell::snake(5, 4)],
+            body,
         }
+    }
+}
+
+enum Mode {
+    Regular,
+    Trim,
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Mode::Regular => "Regular",
+            Mode::Trim => "Trim",
+        };
+        write!(f, "{}", s)
     }
 }
 
 const MS_PER_FRAME: u64 = 60; //1000 / 60;
 
 fn main() -> Result<()> {
-    println!("Snakeli");
-    let game = Game::init()?;
-    game.run()
+    println!("Snakeli - v1");
+    println!();
+    let mut args = args().skip(1);
+    let mut length = 2;
+    let mut width = 50u16;
+    let mut height = 23u16;
+    let mut mode = Mode::Regular;
+    while let Some(next) = args.next() {
+        match next.as_str() {
+            "--help" => {
+                print_usage();
+                exit(0);
+            }
+            "-w" => {
+                width = match args.next().expect("Width to be provided").parse::<u16>() {
+                    Ok(w) => w,
+                    Err(err) => {
+                        eprintln!("ERROR - Cannot parse provided width as u16: {:?}", err);
+                        exit(1);
+                    }
+                }
+            }
+            "-h" => {
+                height = match args.next().expect("Height to be provided").parse::<u16>() {
+                    Ok(h) => h,
+                    Err(err) => {
+                        eprintln!("ERROR - Cannot parse provided height as u16: {:?}", err);
+                        exit(1);
+                    }
+                }
+            }
+            "-l" => {
+                length = match args.next().expect("Length to be provided").parse::<u16>() {
+                    Ok(l) => l,
+                    Err(err) => {
+                        eprintln!("ERROR - Cannot parse provided length as u16: {:?}", err);
+                        exit(1);
+                    }
+                }
+            }
+            "-m" => {
+                mode = match args.next().expect("Mode to be provided").as_str() {
+                    "TRIM" | "T" => Mode::Trim,
+                    "REGULAR" | "R" => Mode::Regular,
+                    _ => {
+                        eprintln!("Invalid mode");
+                        print_usage();
+                        exit(1);
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Unrecognized arg: {}", next);
+                print_usage();
+                exit(1)
+            }
+        }
+    }
+    if length > width - 2 {
+        eprintln!("Length({}) cannot be greater than width - 2({}).", length, width - 2);
+        print_usage();
+        exit(1)
+    }
+    match Game::init(width, height, length, mode)?.run() {
+        Ok(_) => exit(0),
+        Err(err) => {
+            eprintln!("ERROR: {:?}", err);
+            exit(1)
+        }
+    }
+}
+
+fn print_usage() {
+    println!("snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]");
+    println!("");
+    println!("    --help  print this help");
+    println!("        -w  width of the board");
+    println!("        -h  height of the board");
+    println!("        -l  initial length. It has to be less than w-2 (48 by default)");
+    println!("        -m  game mode. REGULAR by default:");
+    println!("              - TRIM: Snake eats itself");
+    println!("              - REGULAR: Snake eats itself");
 }
 
 struct Game<'a> {
@@ -100,6 +200,10 @@ struct Game<'a> {
     fruit: Cell<'a>,
     paused: bool,
     lost: bool,
+    exit: bool,
+    msg: &'a str,
+    length: u16,
+    mode: Mode,
 }
 
 struct TermSize {
@@ -108,17 +212,24 @@ struct TermSize {
 }
 
 impl Game<'_> {
-    pub fn init() -> Result<Game<'static>> {
-        let (w, h) = size()?;
-        let (w, h) = (50u16, h / 2);
+    pub fn init(mut w: u16, mut h: u16, l: u16, mode: Mode) -> Result<Game<'static>> {
+        let (term_w, term_h) = size()?;
+        w = if term_w < w { term_w } else { w };
+        h = if term_h < h + 1 { term_h } else { h + 1 };
+        let snake = Snake::new(l);
+        snake.body.first().unwrap();
         Ok(Game {
             clock: Instant::now(),
             stdout: stdout(),
             term_size: TermSize { w, h },
-            snake: Snake::new(),
+            snake: Snake::new(l),
             fruit: Cell::fruit(w, h),
             paused: false,
             lost: false,
+            exit: false,
+            msg: "",
+            length: l,
+            mode,
         })
     }
 
@@ -131,41 +242,52 @@ impl Game<'_> {
         self.render_border()?;
 
         loop {
+            self.clock = Instant::now();
             frames = frames + 1;
             // process input
             self.handle_event()?;
-            // update game state
-            self.update_snake()?;
-            match self.handle_collision() {
-                Err(err) if err.to_string() == "LOST" => {
-                    break;
+            if self.exit {
+                break;
+            } else if self.paused {
+                self.msg = "PAUSED";
+            } else if self.lost {
+                self.msg = "YOU HAVE LOST :( press r to restart"
+            } else {
+                // update game state
+                self.update_snake()?;
+                match self.handle_collision() {
+                    Err(err) if err.to_string() == "LOST" => {
+                        self.msg = "YOU HAVE LOST :( press r to restart";
+                    }
+                    Err(err) => {
+                        eprintln!("Error handling collision: {:?}", err);
+                    }
+                    _ => {}
                 }
-                Err(err) => {
-                    eprintln!("Error handling collision: {:?}", err);
-                }
-                _ => {}
             }
             // render
-
-            self.clock = Instant::now();
             self.render()?;
-            thread::sleep(Duration::from_millis(MS_PER_FRAME) - Instant::now().duration_since(self.clock));
-        }
-        if self.lost {
-            self.render_lose()?;
+            let diff = Duration::from_millis(MS_PER_FRAME) - Instant::now().duration_since(self.clock);
+            if diff.as_millis() > 0 {
+                thread::sleep(diff);
+            }
         }
         Ok(())
     }
 
     fn render(&mut self) -> Result<()> {
-        self.render_fruit()?;
+        self.stdout.queue(Clear(ClearType::All))?;
+        self.render_status()?;
+        self.render_border()?;
         self.render_snake()?;
+        self.render_fruit()?;
+        self.stdout.queue(MoveTo(self.snake.body[0].x, self.snake.body[0].y))?;
         self.stdout.flush()?;
         Ok(())
     }
 
     fn render_border(&mut self) -> Result<()> {
-        self.stdout.queue(MoveTo(0, 0))?;
+        self.stdout.queue(MoveTo(0, 1))?;
         self.stdout.write(WHITE_BG.as_bytes())?;
         self.stdout.write(" ".repeat(self.term_size.w.into()).as_bytes())?;
         self.stdout.write(RST.as_bytes())?;
@@ -188,27 +310,49 @@ impl Game<'_> {
         if poll(Duration::from_millis((MS_PER_FRAME as f64 * 0.5) as u64))? {
             match read()? {
                 Event::Key(event) => match event.code {
-                    KeyCode::Up | KeyCode::Char('w') => match self.snake.direction {
+                    KeyCode::Char('c') => {
+                        if event.modifiers.contains(KeyModifiers::CONTROL) {
+                            self.exit = true;
+                        }
+                    }
+                    KeyCode::Char('r') => {
+                        self.clock = Instant::now();
+                        self.snake = Snake::new(self.length);
+                        self.fruit = Cell::fruit(self.term_size.w, self.term_size.h);
+                        self.paused = false;
+                        self.lost = false;
+                        self.exit = false;
+                        self.msg = "";
+                        self.stdout.queue(Clear(ClearType::All))?;
+                        self.render_border()?;
+                        self.stdout.flush()?;
+                    }
+                    KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') if !self.paused => match self.snake.direction
+                    {
                         Direction::Down => {}
                         _ => self.snake.direction = Direction::Up,
                     },
-                    KeyCode::Down | KeyCode::Char('s') => match self.snake.direction {
-                        Direction::Up => {}
-                        _ => self.snake.direction = Direction::Down,
-                    },
-                    KeyCode::Left | KeyCode::Char('a') => match self.snake.direction {
-                        Direction::Right => {}
-                        _ => self.snake.direction = Direction::Left,
-                    },
-                    KeyCode::Right | KeyCode::Char('f') => match self.snake.direction {
-                        Direction::Left => {}
-                        _ => self.snake.direction = Direction::Right,
-                    },
-                    KeyCode::Char(' ') => {
-                        disable_raw_mode()?;
-                        self.stdout.flush()?;
+                    KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') if !self.paused => {
+                        match self.snake.direction {
+                            Direction::Up => {}
+                            _ => self.snake.direction = Direction::Down,
+                        }
+                    }
+                    KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') if !self.paused => {
+                        match self.snake.direction {
+                            Direction::Right => {}
+                            _ => self.snake.direction = Direction::Left,
+                        }
+                    }
+                    KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') if !self.paused => {
+                        match self.snake.direction {
+                            Direction::Left => {}
+                            _ => self.snake.direction = Direction::Right,
+                        }
+                    }
+                    KeyCode::Char(' ') if !self.lost => {
                         self.paused = !self.paused;
-                        todo!("Handle pause")
+                        self.msg = if self.paused { "PAUSED" } else { "" }
                     }
                     _ => {}
                 },
@@ -238,30 +382,44 @@ impl Game<'_> {
     }
 
     fn render_snake(&mut self) -> Result<()> {
-        let (hx, hy) = (self.snake.body[0].x, self.snake.body[0].y);
         for c in &mut self.snake.body {
             self.stdout.queue(MoveTo(c.x, c.y))?;
             self.stdout.write(c.color.as_bytes())?;
             self.stdout.write(c.content.as_bytes())?;
             self.stdout.write(RST.as_bytes())?;
         }
-        self.stdout.queue(MoveTo(hx, hy))?;
         Ok(())
     }
 
     fn handle_collision(&mut self) -> Result<()> {
         let head = &self.snake.body[0];
         let tail = &self.snake.body.last().unwrap();
-        if head.x == 0 || head.x == self.term_size.w || head.y == 0 || head.y == self.term_size.h {
+        if head.x == 0 || head.x == self.term_size.w - 1 || head.y == 1 || head.y == self.term_size.h {
             self.lost = true;
             return Err(Error::other("LOST"));
         }
-        let iter = self.snake.body.iter();
 
-        if iter.skip(1).find(|&b| b.x == head.x && b.y == head.y).is_some() {
-            self.lost = true;
-            return Err(Error::other("LOST"));
-        };
+        for i in 1..self.snake.body.len() {
+            if head.x == self.snake.body[i].x && head.y == self.snake.body[i].y {
+                match self.mode {
+                    Mode::Regular => {
+                        self.lost = true;
+                        return Err(Error::other("LOST"));
+                    }
+                    Mode::Trim => {
+                        // TODO: handle this case without cloning/iterating again
+                        let mut new_body: Vec<Cell> = Vec::new();
+                        for j in 0..i {
+                            let c = &self.snake.body[j];
+                            new_body.push(Cell { ..*c });
+                        }
+                        self.snake.body = new_body;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         if head.x == self.fruit.x && head.y == self.fruit.y {
             self.fruit = Cell::fruit(self.term_size.w, self.term_size.h);
             let (dx, dy) = self.snake.direction.get_delta();
@@ -282,15 +440,13 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn render_lose(&mut self) -> Result<()> {
-        let msg = "UNLUCKY, YOU HAVE LOST";
-        self.stdout.queue(Clear(ClearType::All))?;
-        self.stdout.queue(MoveTo(
-            self.term_size.w / 2 - (msg.len() / 2) as u16,
-            self.term_size.h / 2,
-        ))?;
-        self.stdout.write(msg.as_bytes())?;
-        self.stdout.flush()?;
+    fn render_status(&mut self) -> Result<()> {
+        self.stdout.queue(MoveTo(0, 0))?;
+        self.stdout.write(" ".repeat(self.term_size.w as usize).as_bytes())?;
+        self.stdout.queue(MoveTo(0, 0))?;
+        self.stdout
+            .write(format!("Score: {}   ", self.snake.body.len()).as_bytes())?;
+        self.stdout.write(self.msg.as_bytes())?;
         Ok(())
     }
 }
