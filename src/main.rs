@@ -1,5 +1,5 @@
 use crossterm::{
-    cursor::MoveTo,
+    cursor::{Hide, MoveTo},
     event::{poll, read, Event, KeyCode, KeyModifiers},
     terminal::{enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
@@ -13,7 +13,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use term_color::BRIGHT_RED_BG;
+use term_color::{BRIGHT_RED_BG, GREEN_BG};
 
 mod term_color;
 use crate::term_color::{RST, WHITE_BG};
@@ -69,6 +69,15 @@ impl Cell<'_> {
             color: WHITE_BG,
         }
     }
+
+    fn snake_head(x: u16, y: u16) -> Cell<'static> {
+        Cell {
+            x,
+            y,
+            content: " ",
+            color: GREEN_BG,
+        }
+    }
 }
 
 struct Snake<'a> {
@@ -83,6 +92,7 @@ impl Snake<'_> {
             println!("{}", i);
             body.push(Cell::snake(i, 2))
         }
+        body[0].color = GREEN_BG;
         Snake {
             direction: Direction::Right,
             body,
@@ -236,6 +246,7 @@ impl Game<'_> {
     pub fn run(mut self) -> Result<()> {
         enable_raw_mode()?;
         self.stdout.queue(Clear(ClearType::All))?;
+        self.stdout.queue(Hide)?;
         self.stdout.flush()?;
         let mut frames: usize = 0;
         let _frames_start = Instant::now();
@@ -281,7 +292,6 @@ impl Game<'_> {
         self.render_border()?;
         self.render_snake()?;
         self.render_fruit()?;
-        self.stdout.queue(MoveTo(self.snake.body[0].x, self.snake.body[0].y))?;
         self.stdout.flush()?;
         Ok(())
     }
@@ -366,9 +376,10 @@ impl Game<'_> {
     }
 
     fn update_snake(&mut self) -> Result<()> {
-        let head = self.snake.body.first().unwrap();
+        let head = &mut self.snake.body[0];
+        head.color = WHITE_BG;
         let (dx, dy) = self.snake.direction.get_delta();
-        let new_head = Cell::snake((head.x as i32 + dx) as u16, (head.y as i32 + dy) as u16);
+        let new_head = Cell::snake_head((head.x as i32 + dx) as u16, (head.y as i32 + dy) as u16);
         self.snake.body.insert(0, new_head);
 
         let tail = self.snake.body.pop().unwrap();
@@ -407,13 +418,8 @@ impl Game<'_> {
                         return Err(Error::other("LOST"));
                     }
                     Mode::Trim => {
-                        // TODO: handle this case without cloning/iterating again
-                        let mut new_body: Vec<Cell> = Vec::new();
-                        for j in 0..i {
-                            let c = &self.snake.body[j];
-                            new_body.push(Cell { ..*c });
-                        }
-                        self.snake.body = new_body;
+                        let body = &mut self.snake.body;
+                        body.truncate(i);
                         return Ok(());
                     }
                 }

@@ -4,7 +4,7 @@
 
 I was bored. Feel free to copy the crappy code, I don't care :D
 
-![](docs/demo_v1.png)
+![](docs/demo_v2.png)
 
 ## Usage
 
@@ -38,4 +38,5 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
 
 ## TODOs
 
-1. Improve the code performance, address TODOs
+1. ¯\\_(ツ)_/¯
+
