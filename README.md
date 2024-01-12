@@ -31,6 +31,7 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
     3.2. TRIM: If snake hits itself, it loses from the hit to its tail
 4. Restart
 5. Score
+6. Vim-only mode using `-vim` flag. Allowed movement keys: h(left) j(down) k(up) l(right)
 
 ## References
 
