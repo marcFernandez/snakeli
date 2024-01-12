@@ -1,8 +1,20 @@
 # Snakeli
 
-> First part streamed on https://twitch.tv/zartisimo ([video](https://www.twitch.tv/videos/2025056082))
+> Feel free to fork/copy the code for yourself, I don't care :D
 
-I was bored. Feel free to copy the crappy code, I don't care :D
+Random project born from boredom. You can use it to get used to vim keys for
+moving around. Just give it a `-vim` flag and only hjkl keys will work for
+movement.
+
+Controls:
+    - `<Control>c`: quit
+    - `<Space>`: pause
+    - `n`: increase speed
+    - `m`: decrease speed
+    - `<Up> | k | w`: go up (only `k` will work in vim mode)
+    - `<Down> | j | s`: go down (only `j` will work in vim mode)
+    - `<Left> | h | a`: go left (only `h` will work in vim mode)
+    - `<Right> | l | d`: go right (only `l` will work in vim mode)
 
 ![](docs/demo_v2.png)
 
@@ -37,12 +49,12 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
 ## References
 
 - Game loop: https://gameprogrammingpatterns.com/game-loop.html
+- First part streamed on https://twitch.tv/zartisimo ([video](https://www.twitch.tv/videos/2025056082))
 
 ## TODOs
 
 1. Poll for inputs during (0.8 x ms_per_frame) and process them afterwards.
     This is the only way to create multiplayer
 2. Add multiplayer (friendly or unfriendly?)
-3. Do not re-render the entire screen every single time and render updates only (TBD)
-4. ¯\\_(ツ)_/¯
+3. ¯\\_(ツ)_/¯
 

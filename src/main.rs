@@ -203,6 +203,16 @@ fn print_usage() {
     println!("        -m  game mode. REGULAR by default:");
     println!("              - TRIM: Snake eats itself");
     println!("              - REGULAR: Snake eats itself");
+    println!("");
+    println!("Controls:");
+    println!("    - `<Control>c`: quit");
+    println!("    - `<Space>`: pause");
+    println!("    - `n`: increase speed");
+    println!("    - `m`: decrease speed");
+    println!("    - `<Up> | k | w`: go up (only `k` will work in vim mode)");
+    println!("    - `<Down> | j | s`: go down (only `j` will work in vim mode)");
+    println!("    - `<Left> | h | a`: go left (only `h` will work in vim mode)");
+    println!("    - `<Right> | l | d`: go right (only `l` will work in vim mode)");
 }
 
 struct Game<'a> {
