@@ -115,8 +115,6 @@ impl Display for Mode {
     }
 }
 
-const MS_PER_FRAME: u64 = 60; //1000 / 60;
-
 fn main() -> Result<()> {
     println!("Snakeli - v1");
     println!();
@@ -220,6 +218,7 @@ struct Game<'a> {
     length: u16,
     mode: Mode,
     vim_mode: bool,
+    ms_per_frame: u64,
 }
 
 struct TermSize {
@@ -247,6 +246,7 @@ impl Game<'_> {
             length: l,
             mode,
             vim_mode,
+            ms_per_frame: 60,
         })
     }
 
@@ -285,7 +285,7 @@ impl Game<'_> {
             }
             // render
             self.render()?;
-            let diff = Duration::from_millis(MS_PER_FRAME) - Instant::now().duration_since(self.clock);
+            let diff = Duration::from_millis(self.ms_per_frame) - Instant::now().duration_since(self.clock);
             if diff.as_millis() > 0 {
                 thread::sleep(diff);
             }
@@ -324,7 +324,7 @@ impl Game<'_> {
     }
 
     fn handle_event(&mut self) -> Result<()> {
-        if poll(Duration::from_millis((MS_PER_FRAME as f64 * 0.5) as u64))? {
+        if poll(Duration::from_millis((self.ms_per_frame as f64 * 0.5) as u64))? {
             match read()? {
                 Event::Key(event) => match event.code {
                     KeyCode::Char('c') => {
@@ -343,6 +343,16 @@ impl Game<'_> {
                         self.stdout.queue(Clear(ClearType::All))?;
                         self.render_border()?;
                         self.stdout.flush()?;
+                    }
+                    KeyCode::Char('n') => {
+                        if self.ms_per_frame > 20 {
+                            self.ms_per_frame = self.ms_per_frame - 10
+                        }
+                    }
+                    KeyCode::Char('m') => {
+                        if self.ms_per_frame < 500 {
+                            self.ms_per_frame = self.ms_per_frame + 10
+                        }
                     }
                     KeyCode::Up | KeyCode::Char('w') if !self.paused && !self.vim_mode => match self.snake.direction {
                         Direction::Down => {}

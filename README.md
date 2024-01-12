@@ -32,6 +32,7 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
 4. Restart
 5. Score
 6. Vim-only mode using `-vim` flag. Allowed movement keys: h(left) j(down) k(up) l(right)
+7. Snake speed can be modified with n(increase) and m(decrease) keys
 
 ## References
 
@@ -39,7 +40,9 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
 
 ## TODOs
 
-1. Add multiplayer (friendly or unfriendly?)
-2. Do not re-render the entire screen every single time and render updates only (TBD)
-3. ¯\\_(ツ)_/¯
+1. Poll for inputs during (0.8 x ms_per_frame) and process them afterwards.
+    This is the only way to create multiplayer
+2. Add multiplayer (friendly or unfriendly?)
+3. Do not re-render the entire screen every single time and render updates only (TBD)
+4. ¯\\_(ツ)_/¯
 
