@@ -125,11 +125,15 @@ fn main() -> Result<()> {
     let mut width = 50u16;
     let mut height = 23u16;
     let mut mode = Mode::Regular;
+    let mut vim_mode = false;
     while let Some(next) = args.next() {
         match next.as_str() {
             "--help" => {
                 print_usage();
                 exit(0);
+            }
+            "-vim" => {
+                vim_mode = true;
             }
             "-w" => {
                 width = match args.next().expect("Width to be provided").parse::<u16>() {
@@ -181,7 +185,7 @@ fn main() -> Result<()> {
         print_usage();
         exit(1)
     }
-    match Game::init(width, height, length, mode)?.run() {
+    match Game::init(width, height, length, mode, vim_mode)?.run() {
         Ok(_) => exit(0),
         Err(err) => {
             eprintln!("ERROR: {:?}", err);
@@ -194,6 +198,7 @@ fn print_usage() {
     println!("snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]");
     println!("");
     println!("    --help  print this help");
+    println!("      -vim  allow only h(left) j(down) k(up) l(right) keys for movement");
     println!("        -w  width of the board");
     println!("        -h  height of the board");
     println!("        -l  initial length. It has to be less than w-2 (48 by default)");
@@ -214,6 +219,7 @@ struct Game<'a> {
     msg: &'a str,
     length: u16,
     mode: Mode,
+    vim_mode: bool,
 }
 
 struct TermSize {
@@ -222,7 +228,7 @@ struct TermSize {
 }
 
 impl Game<'_> {
-    pub fn init(mut w: u16, mut h: u16, l: u16, mode: Mode) -> Result<Game<'static>> {
+    pub fn init(mut w: u16, mut h: u16, l: u16, mode: Mode, vim_mode: bool) -> Result<Game<'static>> {
         let (term_w, term_h) = size()?;
         w = if term_w < w { term_w } else { w };
         h = if term_h < h + 1 { term_h } else { h + 1 };
@@ -240,6 +246,7 @@ impl Game<'_> {
             msg: "",
             length: l,
             mode,
+            vim_mode,
         })
     }
 
@@ -337,29 +344,44 @@ impl Game<'_> {
                         self.render_border()?;
                         self.stdout.flush()?;
                     }
-                    KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') if !self.paused => match self.snake.direction
-                    {
+                    KeyCode::Up | KeyCode::Char('w') if !self.paused && !self.vim_mode => match self.snake.direction {
                         Direction::Down => {}
                         _ => self.snake.direction = Direction::Up,
                     },
-                    KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') if !self.paused => {
+                    KeyCode::Down | KeyCode::Char('s') if !self.paused && !self.vim_mode => {
                         match self.snake.direction {
                             Direction::Up => {}
                             _ => self.snake.direction = Direction::Down,
                         }
                     }
-                    KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') if !self.paused => {
+                    KeyCode::Left | KeyCode::Char('a') if !self.paused && !self.vim_mode => {
                         match self.snake.direction {
                             Direction::Right => {}
                             _ => self.snake.direction = Direction::Left,
                         }
                     }
-                    KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') if !self.paused => {
+                    KeyCode::Right | KeyCode::Char('d') if !self.paused && !self.vim_mode => {
                         match self.snake.direction {
                             Direction::Left => {}
                             _ => self.snake.direction = Direction::Right,
                         }
                     }
+                    KeyCode::Char('h') if !self.paused => match self.snake.direction {
+                        Direction::Right => {}
+                        _ => self.snake.direction = Direction::Left,
+                    },
+                    KeyCode::Char('j') if !self.paused => match self.snake.direction {
+                        Direction::Up => {}
+                        _ => self.snake.direction = Direction::Down,
+                    },
+                    KeyCode::Char('k') if !self.paused => match self.snake.direction {
+                        Direction::Down => {}
+                        _ => self.snake.direction = Direction::Up,
+                    },
+                    KeyCode::Char('l') if !self.paused => match self.snake.direction {
+                        Direction::Left => {}
+                        _ => self.snake.direction = Direction::Right,
+                    },
                     KeyCode::Char(' ') if !self.lost => {
                         self.paused = !self.paused;
                         self.msg = if self.paused { "PAUSED" } else { "" }
@@ -393,7 +415,7 @@ impl Game<'_> {
     }
 
     fn render_snake(&mut self) -> Result<()> {
-        for c in &mut self.snake.body {
+        for c in &mut self.snake.body.iter().rev() {
             self.stdout.queue(MoveTo(c.x, c.y))?;
             self.stdout.write(c.color.as_bytes())?;
             self.stdout.write(c.content.as_bytes())?;

@@ -38,5 +38,7 @@ snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]
 
 ## TODOs
 
-1. ¯\\_(ツ)_/¯
+1. Add multiplayer (friendly or unfriendly?)
+2. Do not re-render the entire screen every single time and render updates only (TBD)
+3. ¯\\_(ツ)_/¯
 
