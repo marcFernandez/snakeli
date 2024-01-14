@@ -1,7 +1,7 @@
 use crossterm::{
-    cursor::{Hide, MoveTo},
+    cursor::{Hide, MoveTo, Show},
     event::{poll, read, Event, KeyCode, KeyModifiers},
-    terminal::{enable_raw_mode, size, Clear, ClearType},
+    terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
 };
 use rand::Rng;
@@ -115,6 +115,14 @@ impl Display for Mode {
     }
 }
 
+fn reset_terminal() -> Result<()> {
+    let mut stdout = stdout();
+    disable_raw_mode()?;
+    stdout.queue(Show)?;
+    stdout.queue(Clear(ClearType::All))?;
+    stdout.flush()
+}
+
 fn main() -> Result<()> {
     println!("Snakeli - v1");
     println!();
@@ -193,6 +201,7 @@ fn main() -> Result<()> {
 }
 
 fn print_usage() {
+    reset_terminal().ok();
     println!("snakeli [-w 50] [-h 30] [-l 5] [-m TRIM]");
     println!("");
     println!("    --help  print this help");
@@ -300,6 +309,7 @@ impl Game<'_> {
                 thread::sleep(diff);
             }
         }
+        reset_terminal()?;
         Ok(())
     }
 
